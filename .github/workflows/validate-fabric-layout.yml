@@ -3,7 +3,11 @@ name: Validate Fabric layout
 on:
   pull_request:
   push:
+    branches: [main]
   workflow_dispatch:
+
+permissions:
+  contents: read
 
 jobs:
   validate:
@@ -19,24 +23,19 @@ jobs:
         run: |
           set -euo pipefail
 
-          test -d fabric
-          test -f fabric/HelloWorld.Notebook/.platform
-          test -f fabric/HelloWorld.Notebook/notebook-content.py
-
           python - <<'PY'
           import json
           from pathlib import Path
 
           fabric_root = Path("fabric")
-          item_dirs = [path for path in fabric_root.iterdir() if path.is_dir() and "." in path.name]
-          if not item_dirs:
-              raise SystemExit("No Fabric item folders found under fabric/")
+          if not fabric_root.is_dir():
+              raise SystemExit("Missing fabric/ directory")
 
-          for item_dir in item_dirs:
-              platform_path = item_dir / ".platform"
-              if not platform_path.is_file():
-                  raise SystemExit(f"Missing .platform metadata in {item_dir}")
+          platform_files = sorted(fabric_root.glob("*/.platform"))
+          if not platform_files:
+              raise SystemExit("No Fabric item metadata files found under fabric/")
 
+          for platform_path in platform_files:
               platform = json.loads(platform_path.read_text())
               metadata = platform.get("metadata", {})
               if not metadata.get("type"):
@@ -44,7 +43,11 @@ jobs:
               if not metadata.get("displayName"):
                   raise SystemExit(f"Missing metadata.displayName in {platform_path}")
 
-          notebook_source = Path("fabric/HelloWorld.Notebook/notebook-content.py").read_text()
+          notebook_path = Path("fabric/HelloWorld.Notebook/notebook-content.py")
+          if not notebook_path.is_file():
+              raise SystemExit(f"Missing {notebook_path}")
+
+          notebook_source = notebook_path.read_text()
           if "Hello, Microsoft Fabric!" not in notebook_source:
               raise SystemExit("HelloWorld notebook does not contain the expected sample message")
           PY
