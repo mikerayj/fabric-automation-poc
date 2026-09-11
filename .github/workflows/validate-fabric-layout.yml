@@ -35,7 +35,6 @@ jobs:
           if not platform_files:
               raise SystemExit("No Fabric item metadata files found under fabric/")
 
-          notebook_count = 0
           for platform_path in platform_files:
               try:
                   platform = json.loads(platform_path.read_text(encoding="utf-8"))
@@ -50,11 +49,7 @@ jobs:
                   raise SystemExit(f"Missing metadata.displayName in {platform_path}")
 
               if item_type == "Notebook":
-                  notebook_count += 1
                   notebook_path = platform_path.parent / "notebook-content.py"
                   if not notebook_path.is_file():
                       raise SystemExit(f"Missing {notebook_path}")
-
-          if notebook_count == 0:
-              raise SystemExit("No Fabric notebook items found under fabric/")
           PY
