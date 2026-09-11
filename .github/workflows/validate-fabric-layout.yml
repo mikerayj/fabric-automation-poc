@@ -25,31 +25,39 @@ jobs:
 
           python3 - <<'PY'
           import json
+          import sys
           from pathlib import Path
+
+          def fail(message):
+              print(f"::error::{message}", file=sys.stderr)
+              sys.exit(1)
 
           fabric_root = Path("fabric")
           if not fabric_root.is_dir():
-              raise SystemExit("Missing fabric/ directory")
+              fail("Missing fabric/ directory")
 
           platform_files = sorted(fabric_root.rglob(".platform"))
           if not platform_files:
-              raise SystemExit("No Fabric item metadata files found under fabric/")
+              fail("No Fabric item metadata files found under fabric/")
 
           for platform_path in platform_files:
               try:
                   platform = json.loads(platform_path.read_text(encoding="utf-8"))
               except json.JSONDecodeError as error:
-                  raise SystemExit(f"Invalid JSON in {platform_path}: {error}") from error
+                  fail(f"Invalid JSON in {platform_path}: {error}")
 
               metadata = platform.get("metadata", {})
               item_type = metadata.get("type")
               if not item_type:
-                  raise SystemExit(f"Missing metadata.type in {platform_path}")
+                  fail(f"Missing metadata.type in {platform_path}")
               if not metadata.get("displayName"):
-                  raise SystemExit(f"Missing metadata.displayName in {platform_path}")
+                  fail(f"Missing metadata.displayName in {platform_path}")
 
               if item_type == "Notebook":
-                  notebook_path = platform_path.parent / "notebook-content.py"
-                  if not notebook_path.is_file():
-                      raise SystemExit(f"Missing {notebook_path}")
+                  notebook_sources = [
+                      path for path in platform_path.parent.glob("notebook-content.*")
+                      if path.is_file()
+                  ]
+                  if not notebook_sources:
+                      fail(f"Missing notebook-content.* in {platform_path.parent}")
           PY
