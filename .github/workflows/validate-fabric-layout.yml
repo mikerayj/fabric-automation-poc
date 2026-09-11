@@ -66,7 +66,7 @@ jobs:
                   if not metadata.get("displayName"):
                       report_error(f"Missing metadata.displayName in {platform_path}")
 
-                  if (item_type or item_suffix) == "Notebook":
+                  if item_type == "Notebook" or item_suffix == "Notebook":
                       notebook_sources = [
                           path for path in item_dir.glob("notebook-content.*")
                           if path.is_file()
