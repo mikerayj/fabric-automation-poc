@@ -16,6 +16,8 @@ fabric/
 - `fabric/HelloWorld.Notebook` is a minimal Fabric notebook item that can be used as the first asset in a Fabric workspace connected to this repository.
 - `.github/workflows/validate-fabric-layout.yml` checks that Fabric item folders include required metadata and that the Hello World notebook source is present.
 
+The `logicalId` in `fabric/HelloWorld.Notebook/.platform` is a placeholder for this sample. Fabric Git integration may regenerate or remap item identifiers when the workspace is first synchronized.
+
 ## Getting started
 
 1. Create or choose a Microsoft Fabric workspace.
