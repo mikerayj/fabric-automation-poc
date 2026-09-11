@@ -23,7 +23,7 @@ jobs:
         run: |
           set -euo pipefail
 
-          python - <<'PY'
+          python3 - <<'PY'
           import json
           from pathlib import Path
 
@@ -37,7 +37,11 @@ jobs:
 
           notebook_count = 0
           for platform_path in platform_files:
-              platform = json.loads(platform_path.read_text())
+              try:
+                  platform = json.loads(platform_path.read_text(encoding="utf-8"))
+              except json.JSONDecodeError as error:
+                  raise SystemExit(f"Invalid JSON in {platform_path}: {error}") from error
+
               metadata = platform.get("metadata", {})
               item_type = metadata.get("type")
               if not item_type:
