@@ -89,8 +89,8 @@ jobs:
       id-token: write
     env:
       FABRIC_DEV_WORKSPACE_ID: ${{ vars.FABRIC_DEV_WORKSPACE_ID }}
-      FAB_SPN_CLIENT_ID: ${{ secrets.FAB_SPN_CLIENT_ID }}
-      FAB_TENANT_ID: ${{ secrets.FAB_TENANT_ID }}
+      FAB_SPN_CLIENT_ID: ${{ vars.FAB_SPN_CLIENT_ID }}
+      FAB_TENANT_ID: ${{ vars.FAB_TENANT_ID }}
 
     steps:
       - name: Check out repository
