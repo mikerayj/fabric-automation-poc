@@ -1,4 +1,4 @@
-name: Validate Fabric layout
+name: Build and Deploy Foo Fabric Workspace Assets
 
 on:
   pull_request:
