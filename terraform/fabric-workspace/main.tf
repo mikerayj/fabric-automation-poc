@@ -6,6 +6,8 @@ locals {
 
 # Only used when neither an explicit name nor a suffix is supplied, so an
 # engineer can stand up an ephemeral workspace without inventing a unique name.
+# The suffix is kept in state so later updates and destroys target the same
+# workspace.
 resource "random_string" "suffix" {
   count = local.needs_random_suffix ? 1 : 0
 
@@ -14,10 +16,6 @@ resource "random_string" "suffix" {
   upper   = false
   numeric = true
   special = false
-
-  keepers = {
-    prefix = var.workspace_name_prefix
-  }
 }
 
 resource "fabric_workspace" "this" {

@@ -78,7 +78,7 @@ outputs:
 runs:
   using: composite
   steps:
-    - name: Validate action input
+    - name: Validate inputs
       shell: bash
       env:
         TF_ACTION: ${{ inputs.action }}
@@ -159,6 +159,7 @@ runs:
       working-directory: ${{ inputs.working-directory }}
       env:
         TF_BACKEND_CONFIG: ${{ inputs.backend-config }}
+        TF_AZURE_SUBSCRIPTION_ID: ${{ inputs.azure-subscription-id }}
       run: |
         set -euo pipefail
 
@@ -183,6 +184,11 @@ runs:
 
         if [[ ! -f backend-azurerm.tf.example ]]; then
           echo "::error::backend-azurerm.tf.example was not found in '${PWD}'. Check the working-directory input."
+          exit 1
+        fi
+
+        if [[ -z "${TF_AZURE_SUBSCRIPTION_ID}" ]]; then
+          echo "::error::azure-subscription-id is required when backend-config is supplied; set it to the subscription of the Terraform state storage account."
           exit 1
         fi
 

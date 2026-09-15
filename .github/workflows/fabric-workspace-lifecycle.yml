@@ -73,10 +73,10 @@ on:
     secrets:
       FAB_TENANT_ID:
         description: Entra tenant ID used to authenticate against Fabric.
-        required: false
+        required: true
       FAB_SPN_CLIENT_ID:
         description: Entra application (client) ID used to authenticate against Fabric.
-        required: false
+        required: true
     outputs:
       workspace_id:
         description: ID of the Fabric workspace.
@@ -159,6 +159,7 @@ jobs:
           INPUT_WORKSPACE_NAME_SUFFIX: ${{ inputs.workspace_name_suffix }}
           STATE_RESOURCE_GROUP: ${{ vars.TF_STATE_RESOURCE_GROUP }}
           STATE_STORAGE_ACCOUNT: ${{ vars.TF_STATE_STORAGE_ACCOUNT }}
+          STATE_SUBSCRIPTION_ID: ${{ vars.TF_STATE_SUBSCRIPTION_ID }}
           STATE_CONTAINER: ${{ vars.TF_STATE_CONTAINER }}
         run: |
           set -euo pipefail
@@ -188,8 +189,8 @@ jobs:
             state_key="fabric-workspace/$(printf '%s' "${state_name}" | tr '[:upper:]' '[:lower:]' | tr -cs 'a-z0-9-' '-').tfstate"
           fi
 
-          if [[ -z "${STATE_RESOURCE_GROUP:-}" || -z "${STATE_STORAGE_ACCOUNT:-}" ]]; then
-            echo "::warning::TF_STATE_RESOURCE_GROUP and TF_STATE_STORAGE_ACCOUNT variables are not set; Terraform will use local state and cannot update or destroy this workspace later."
+          if [[ -z "${STATE_RESOURCE_GROUP:-}" || -z "${STATE_STORAGE_ACCOUNT:-}" || -z "${STATE_SUBSCRIPTION_ID:-}" ]]; then
+            echo "::warning::TF_STATE_RESOURCE_GROUP, TF_STATE_STORAGE_ACCOUNT and TF_STATE_SUBSCRIPTION_ID variables are not all set; Terraform will use local state and cannot update or destroy this workspace later."
             {
               echo "backend-config<<EOF"
               echo "EOF"

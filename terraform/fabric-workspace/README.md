@@ -91,6 +91,7 @@ jobs:
           workspace-name-suffix: pr-${{ github.event.number }}
           tenant-id: ${{ secrets.FAB_TENANT_ID }}
           client-id: ${{ secrets.FAB_SPN_CLIENT_ID }}
+          azure-subscription-id: ${{ vars.TF_STATE_SUBSCRIPTION_ID }}
           backend-config: |
             resource_group_name=${{ vars.TF_STATE_RESOURCE_GROUP }}
             storage_account_name=${{ vars.TF_STATE_STORAGE_ACCOUNT }}
@@ -122,7 +123,7 @@ jobs:
 | `TF_STATE_RESOURCE_GROUP` | variable | Resource group of the state storage account. |
 | `TF_STATE_STORAGE_ACCOUNT` | variable | State storage account name. |
 | `TF_STATE_CONTAINER` | variable | State container name (defaults to `tfstate`). |
-| `TF_STATE_SUBSCRIPTION_ID` | variable | Subscription of the state storage account. |
+| `TF_STATE_SUBSCRIPTION_ID` | variable | Subscription of the state storage account. Required together with the other `TF_STATE_*` variables. |
 
 The service principal needs the Fabric tenant setting *Service principals can use
 Fabric APIs* enabled, contributor rights on the capacity, and `Storage Blob Data
