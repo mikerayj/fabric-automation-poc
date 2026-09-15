@@ -1,0 +1,14 @@
+# Copy to terraform.tfvars and adjust. Never put secrets in this file.
+
+capacity_id = "00000000-0000-0000-0000-000000000000"
+
+# Named workspace
+workspace_name        = "fabric-automation-poc-dev"
+workspace_description = "Fabric workspace managed by Terraform"
+
+# Ephemeral workspace: leave workspace_name empty and let the name be generated
+# workspace_name        = ""
+# workspace_name_prefix = "fabric-ws"
+# workspace_name_suffix = "pr-123"
+
+enable_workspace_identity = true

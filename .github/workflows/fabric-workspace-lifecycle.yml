@@ -1,0 +1,232 @@
+name: Fabric workspace lifecycle
+
+on:
+  workflow_dispatch:
+    inputs:
+      action:
+        description: Terraform action to run.
+        type: choice
+        options: [plan, apply, destroy]
+        default: plan
+      environment:
+        description: GitHub environment that holds the Fabric credentials.
+        type: string
+        default: dev
+      workspace_name:
+        description: Explicit workspace display name. Leave empty for an ephemeral generated name.
+        type: string
+        default: ""
+      workspace_name_prefix:
+        description: Prefix used when workspace_name is empty.
+        type: string
+        default: fabric-ws
+      workspace_name_suffix:
+        description: Suffix used when workspace_name is empty. Leave empty for a random suffix.
+        type: string
+        default: ""
+      workspace_description:
+        description: Workspace description.
+        type: string
+        default: ""
+      capacity_id:
+        description: Fabric capacity ID. Defaults to the FABRIC_CAPACITY_ID variable.
+        type: string
+        default: ""
+      enable_workspace_identity:
+        description: Create a system-assigned workspace identity.
+        type: boolean
+        default: true
+      state_key:
+        description: Terraform state blob key. Defaults to fabric-workspace/<workspace name>.tfstate.
+        type: string
+        default: ""
+
+  workflow_call:
+    inputs:
+      action:
+        type: string
+        default: plan
+      environment:
+        type: string
+        default: dev
+      workspace_name:
+        type: string
+        default: ""
+      workspace_name_prefix:
+        type: string
+        default: fabric-ws
+      workspace_name_suffix:
+        type: string
+        default: ""
+      workspace_description:
+        type: string
+        default: ""
+      capacity_id:
+        type: string
+        default: ""
+      enable_workspace_identity:
+        type: boolean
+        default: true
+      state_key:
+        type: string
+        default: ""
+    secrets:
+      FAB_TENANT_ID:
+        description: Entra tenant ID used to authenticate against Fabric.
+        required: true
+      FAB_SPN_CLIENT_ID:
+        description: Entra application (client) ID used to authenticate against Fabric.
+        required: true
+    outputs:
+      workspace_id:
+        description: ID of the Fabric workspace.
+        value: ${{ jobs.terraform.outputs.workspace_id }}
+      workspace_name:
+        description: Display name of the Fabric workspace.
+        value: ${{ jobs.terraform.outputs.workspace_name }}
+      workspace_identity_application_id:
+        description: Application ID of the workspace identity.
+        value: ${{ jobs.terraform.outputs.workspace_identity_application_id }}
+      workspace_identity_service_principal_id:
+        description: Service principal ID of the workspace identity.
+        value: ${{ jobs.terraform.outputs.workspace_identity_service_principal_id }}
+      onelake_dfs_endpoint:
+        description: OneLake DFS endpoint of the workspace.
+        value: ${{ jobs.terraform.outputs.onelake_dfs_endpoint }}
+
+  pull_request:
+    paths:
+      - terraform/**
+      - .github/actions/fabric-workspace-terraform/**
+      - .github/workflows/fabric-workspace-lifecycle.yml
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    name: Validate Terraform configuration
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4.2.2
+
+      - name: Set up Terraform
+        uses: hashicorp/setup-terraform@v3.1.2
+        with:
+          terraform_version: 1.13.3
+          terraform_wrapper: false
+
+      - name: Terraform format and validate
+        shell: bash
+        working-directory: terraform/fabric-workspace
+        run: |
+          set -euo pipefail
+          terraform fmt -check -recursive
+          terraform init -backend=false -input=false
+          terraform validate
+
+  terraform:
+    name: Terraform ${{ inputs.action }}
+    runs-on: ubuntu-latest
+    needs: validate
+    if: github.event_name != 'pull_request'
+    environment: ${{ inputs.environment }}
+    permissions:
+      contents: read
+      id-token: write
+    outputs:
+      workspace_id: ${{ steps.fabric_workspace.outputs.workspace-id }}
+      workspace_name: ${{ steps.fabric_workspace.outputs.workspace-name }}
+      workspace_identity_application_id: ${{ steps.fabric_workspace.outputs.workspace-identity-application-id }}
+      workspace_identity_service_principal_id: ${{ steps.fabric_workspace.outputs.workspace-identity-service-principal-id }}
+      onelake_dfs_endpoint: ${{ steps.fabric_workspace.outputs.onelake-dfs-endpoint }}
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4.2.2
+
+      - name: Resolve settings
+        id: settings
+        shell: bash
+        env:
+          INPUT_CAPACITY_ID: ${{ inputs.capacity_id }}
+          DEFAULT_CAPACITY_ID: ${{ vars.FABRIC_CAPACITY_ID }}
+          INPUT_STATE_KEY: ${{ inputs.state_key }}
+          INPUT_WORKSPACE_NAME: ${{ inputs.workspace_name }}
+          INPUT_WORKSPACE_NAME_PREFIX: ${{ inputs.workspace_name_prefix }}
+          INPUT_WORKSPACE_NAME_SUFFIX: ${{ inputs.workspace_name_suffix }}
+          STATE_RESOURCE_GROUP: ${{ vars.TF_STATE_RESOURCE_GROUP }}
+          STATE_STORAGE_ACCOUNT: ${{ vars.TF_STATE_STORAGE_ACCOUNT }}
+          STATE_SUBSCRIPTION_ID: ${{ vars.TF_STATE_SUBSCRIPTION_ID }}
+          STATE_CONTAINER: ${{ vars.TF_STATE_CONTAINER }}
+        run: |
+          set -euo pipefail
+
+          capacity_id="${INPUT_CAPACITY_ID:-}"
+          if [[ -z "${capacity_id}" ]]; then
+            capacity_id="${DEFAULT_CAPACITY_ID:-}"
+          fi
+
+          if [[ -z "${capacity_id}" ]]; then
+            echo "::error::Provide a capacity_id input or set the FABRIC_CAPACITY_ID GitHub Actions variable."
+            exit 1
+          fi
+
+          echo "capacity-id=${capacity_id}" >> "${GITHUB_OUTPUT}"
+
+          if [[ -z "${STATE_RESOURCE_GROUP:-}" || -z "${STATE_STORAGE_ACCOUNT:-}" || -z "${STATE_SUBSCRIPTION_ID:-}" ]]; then
+            echo "::warning::TF_STATE_RESOURCE_GROUP, TF_STATE_STORAGE_ACCOUNT and TF_STATE_SUBSCRIPTION_ID variables are not all set; Terraform will use local state and cannot update or destroy this workspace later."
+            {
+              echo "backend-config<<EOF"
+              echo "EOF"
+            } >> "${GITHUB_OUTPUT}"
+            exit 0
+          fi
+
+          state_key="${INPUT_STATE_KEY:-}"
+          if [[ -z "${state_key}" ]]; then
+            state_name="${INPUT_WORKSPACE_NAME:-}"
+            if [[ -z "${state_name}" ]]; then
+              if [[ -z "${INPUT_WORKSPACE_NAME_SUFFIX:-}" ]]; then
+                echo "::error::Remote state needs a stable key. Provide workspace_name, workspace_name_suffix or state_key."
+                exit 1
+              fi
+              state_name="${INPUT_WORKSPACE_NAME_PREFIX:-fabric-ws}-${INPUT_WORKSPACE_NAME_SUFFIX}"
+            fi
+            # Lowercase the name and collapse every unsupported character into a
+            # single dash, then trim edge dashes: "My WS!" -> "my-ws".
+            state_slug="$(printf '%s' "${state_name}" | tr '[:upper:]' '[:lower:]' | tr -cs 'a-z0-9-' '-' | sed 's/^-*//; s/-*$//')"
+            if [[ -z "${state_slug}" ]]; then
+              echo "::error::Could not derive a state key from '${state_name}'. Provide state_key explicitly."
+              exit 1
+            fi
+            state_key="fabric-workspace/${state_slug}.tfstate"
+          fi
+
+          {
+            echo "backend-config<<EOF"
+            echo "resource_group_name=${STATE_RESOURCE_GROUP}"
+            echo "storage_account_name=${STATE_STORAGE_ACCOUNT}"
+            echo "container_name=${STATE_CONTAINER:-tfstate}"
+            echo "key=${state_key}"
+            echo "use_azuread_auth=true"
+            echo "EOF"
+          } >> "${GITHUB_OUTPUT}"
+
+      - name: Run Fabric workspace Terraform
+        id: fabric_workspace
+        uses: ./.github/actions/fabric-workspace-terraform
+        with:
+          action: ${{ inputs.action }}
+          capacity-id: ${{ steps.settings.outputs.capacity-id }}
+          workspace-name: ${{ inputs.workspace_name }}
+          workspace-name-prefix: ${{ inputs.workspace_name_prefix }}
+          workspace-name-suffix: ${{ inputs.workspace_name_suffix }}
+          workspace-description: ${{ inputs.workspace_description }}
+          enable-workspace-identity: ${{ inputs.enable_workspace_identity }}
+          tenant-id: ${{ secrets.FAB_TENANT_ID }}
+          client-id: ${{ secrets.FAB_SPN_CLIENT_ID }}
+          azure-subscription-id: ${{ vars.TF_STATE_SUBSCRIPTION_ID }}
+          backend-config: ${{ steps.settings.outputs.backend-config }}
