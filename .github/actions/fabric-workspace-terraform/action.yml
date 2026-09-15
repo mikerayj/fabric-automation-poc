@@ -177,7 +177,7 @@ runs:
           backend_args+=("-backend-config=${line}")
         done <<< "${TF_BACKEND_CONFIG}"
 
-        if [[ ${#backend_args[@]} -eq 0 ]]; then
+        if [[ ${#backend_args[@]-0} -eq 0 ]]; then
           if [[ "${TF_ACTION}" == "destroy" ]]; then
             echo "::error::destroy needs the remote state created by the matching apply. Supply backend-config, or run 'terraform destroy' locally against the state file."
             exit 1
@@ -212,6 +212,8 @@ runs:
         ARM_SUBSCRIPTION_ID: ${{ inputs.azure-subscription-id }}
       run: |
         set -euo pipefail
+        # Disable globbing so backend-config values are never glob-expanded.
+        set -f
         # shellcheck disable=SC2086
         terraform init -input=false ${TF_INIT_ARGS:-}
 

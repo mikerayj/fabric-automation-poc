@@ -27,4 +27,11 @@ resource "fabric_workspace" "this" {
   identity = var.enable_workspace_identity ? { type = "SystemAssigned" } : null
 
   timeouts = var.timeouts
+
+  lifecycle {
+    precondition {
+      condition     = length(local.workspace_name) <= 256
+      error_message = "The resulting workspace name must be at most 256 characters; shorten workspace_name_prefix or workspace_name_suffix."
+    }
+  }
 }

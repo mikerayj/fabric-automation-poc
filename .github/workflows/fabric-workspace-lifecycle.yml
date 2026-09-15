@@ -195,6 +195,8 @@ jobs:
               fi
               state_name="${INPUT_WORKSPACE_NAME_PREFIX:-fabric-ws}-${INPUT_WORKSPACE_NAME_SUFFIX}"
             fi
+            # Lowercase the name and collapse every unsupported character into a
+            # single dash, then trim edge dashes: "My WS!" -> "my-ws".
             state_slug="$(printf '%s' "${state_name}" | tr '[:upper:]' '[:lower:]' | tr -cs 'a-z0-9-' '-' | sed 's/^-*//; s/-*$//')"
             if [[ -z "${state_slug}" ]]; then
               echo "::error::Could not derive a state key from '${state_name}'. Provide state_key explicitly."
