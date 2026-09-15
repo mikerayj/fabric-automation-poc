@@ -82,6 +82,8 @@ runs:
       shell: bash
       env:
         TF_ACTION: ${{ inputs.action }}
+        TF_TENANT_ID: ${{ inputs.tenant-id }}
+        TF_CLIENT_ID: ${{ inputs.client-id }}
       run: |
         set -euo pipefail
 
@@ -92,6 +94,16 @@ runs:
             exit 1
             ;;
         esac
+
+        if [[ -z "${TF_TENANT_ID}" ]]; then
+          echo "::error::tenant-id is required. Set the FAB_TENANT_ID secret to your Entra tenant ID."
+          exit 1
+        fi
+
+        if [[ -z "${TF_CLIENT_ID}" ]]; then
+          echo "::error::client-id is required. Set the FAB_SPN_CLIENT_ID secret to the Entra application used for GitHub workload identity federation."
+          exit 1
+        fi
 
     - name: Set up Terraform
       uses: hashicorp/setup-terraform@v3.1.2
@@ -167,6 +179,11 @@ runs:
           echo "::warning::No backend-config supplied; Terraform will use local state that is discarded after this job. Configure an azurerm backend to manage updates and destroys."
           echo "TF_INIT_ARGS=" >> "${GITHUB_ENV}"
           exit 0
+        fi
+
+        if [[ ! -f backend-azurerm.tf.example ]]; then
+          echo "::error::backend-azurerm.tf.example was not found in '${PWD}'. Check the working-directory input."
+          exit 1
         fi
 
         cp backend-azurerm.tf.example backend-azurerm.tf

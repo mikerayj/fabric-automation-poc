@@ -16,7 +16,7 @@ The Fabric capacity is expected to already exist; its ID is an input.
 | `workspace_name_prefix` | `fabric-ws` | Prefix used when `workspace_name` is empty. |
 | `workspace_name_suffix` | `""` | Suffix used when `workspace_name` is empty. Empty means a random 6-character suffix. |
 | `workspace_description` | `""` | Workspace description. |
-| `enable_workspace_identity` | `true` | Create a system-assigned workspace identity. Set to `false` to override. |
+| `enable_workspace_identity` | `true` | Create a system-assigned workspace identity. Set to `false` to create the workspace without a workspace identity. |
 | `skip_capacity_state_validation` | `false` | Skip capacity state validation when the caller cannot list capacities. |
 | `timeouts` | `{}` | Optional per-operation timeouts, for example `{ create = "30m" }`. |
 

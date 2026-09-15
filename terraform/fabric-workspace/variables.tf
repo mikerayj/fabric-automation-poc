@@ -53,7 +53,7 @@ variable "workspace_description" {
 }
 
 variable "enable_workspace_identity" {
-  description = "Create a system-assigned workspace identity. Set to false to override."
+  description = "Create a system-assigned workspace identity. Set to false to create the workspace without a workspace identity."
   type        = bool
   default     = true
 }
