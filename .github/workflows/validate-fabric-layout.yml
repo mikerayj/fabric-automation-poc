@@ -152,6 +152,8 @@ jobs:
             exit 1
           fi
 
+          echo "FAB_SPN_FEDERATED_TOKEN=${FAB_SPN_FEDERATED_TOKEN}" >> "${GITHUB_ENV}"
+
           fab auth login \
             --tenant "${FAB_TENANT_ID}" \
             --username "${FAB_SPN_CLIENT_ID}" \
