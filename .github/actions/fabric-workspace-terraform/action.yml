@@ -60,19 +60,19 @@ inputs:
 
 outputs:
   workspace-id:
-    description: ID of the Fabric workspace.
+    description: ID of the Fabric workspace. Only populated when action is apply.
     value: ${{ steps.terraform_outputs.outputs.workspace-id }}
   workspace-name:
-    description: Display name of the Fabric workspace.
+    description: Display name of the Fabric workspace. Only populated when action is apply.
     value: ${{ steps.terraform_outputs.outputs.workspace-name }}
   workspace-identity-application-id:
-    description: Application ID of the workspace identity.
+    description: Application ID of the workspace identity. Only populated when action is apply.
     value: ${{ steps.terraform_outputs.outputs.workspace-identity-application-id }}
   workspace-identity-service-principal-id:
-    description: Service principal ID of the workspace identity.
+    description: Service principal ID of the workspace identity. Only populated when action is apply.
     value: ${{ steps.terraform_outputs.outputs.workspace-identity-service-principal-id }}
   onelake-dfs-endpoint:
-    description: OneLake DFS endpoint of the workspace.
+    description: OneLake DFS endpoint of the workspace. Only populated when action is apply.
     value: ${{ steps.terraform_outputs.outputs.onelake-dfs-endpoint }}
 
 runs:
@@ -171,7 +171,7 @@ runs:
           line="${line%"${line##*[![:space:]]}"}"
           [[ -z "${line}" ]] && continue
           if [[ "${line}" != *=* || "${line}" == *[[:space:]]* ]]; then
-            echo "::error::backend-config entries must be single-line 'key=value' pairs without spaces."
+            echo "::error::backend-config entries must be single-line 'key=value' pairs without spaces (got '${line}')."
             exit 1
           fi
           backend_args+=("-backend-config=${line}")

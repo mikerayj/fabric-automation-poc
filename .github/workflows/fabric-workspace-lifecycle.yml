@@ -176,6 +176,15 @@ jobs:
 
           echo "capacity-id=${capacity_id}" >> "${GITHUB_OUTPUT}"
 
+          if [[ -z "${STATE_RESOURCE_GROUP:-}" || -z "${STATE_STORAGE_ACCOUNT:-}" || -z "${STATE_SUBSCRIPTION_ID:-}" ]]; then
+            echo "::warning::TF_STATE_RESOURCE_GROUP, TF_STATE_STORAGE_ACCOUNT and TF_STATE_SUBSCRIPTION_ID variables are not all set; Terraform will use local state and cannot update or destroy this workspace later."
+            {
+              echo "backend-config<<EOF"
+              echo "EOF"
+            } >> "${GITHUB_OUTPUT}"
+            exit 0
+          fi
+
           state_key="${INPUT_STATE_KEY:-}"
           if [[ -z "${state_key}" ]]; then
             state_name="${INPUT_WORKSPACE_NAME:-}"
@@ -186,16 +195,12 @@ jobs:
               fi
               state_name="${INPUT_WORKSPACE_NAME_PREFIX:-fabric-ws}-${INPUT_WORKSPACE_NAME_SUFFIX}"
             fi
-            state_key="fabric-workspace/$(printf '%s' "${state_name}" | tr '[:upper:]' '[:lower:]' | tr -cs 'a-z0-9-' '-').tfstate"
-          fi
-
-          if [[ -z "${STATE_RESOURCE_GROUP:-}" || -z "${STATE_STORAGE_ACCOUNT:-}" || -z "${STATE_SUBSCRIPTION_ID:-}" ]]; then
-            echo "::warning::TF_STATE_RESOURCE_GROUP, TF_STATE_STORAGE_ACCOUNT and TF_STATE_SUBSCRIPTION_ID variables are not all set; Terraform will use local state and cannot update or destroy this workspace later."
-            {
-              echo "backend-config<<EOF"
-              echo "EOF"
-            } >> "${GITHUB_OUTPUT}"
-            exit 0
+            state_slug="$(printf '%s' "${state_name}" | tr '[:upper:]' '[:lower:]' | tr -cs 'a-z0-9-' '-' | sed 's/^-*//; s/-*$//')"
+            if [[ -z "${state_slug}" ]]; then
+              echo "::error::Could not derive a state key from '${state_name}'. Provide state_key explicitly."
+              exit 1
+            fi
+            state_key="fabric-workspace/${state_slug}.tfstate"
           fi
 
           {
