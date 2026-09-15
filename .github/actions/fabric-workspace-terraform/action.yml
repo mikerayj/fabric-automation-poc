@@ -1,0 +1,280 @@
+name: Fabric workspace Terraform
+description: Plan, apply or destroy the Fabric workspace Terraform configuration in this repository.
+
+inputs:
+  action:
+    description: Terraform action to run. One of plan, apply or destroy.
+    required: false
+    default: plan
+  capacity-id:
+    description: ID of the existing Fabric capacity to assign the workspace to.
+    required: true
+  workspace-name:
+    description: Explicit workspace display name. Leave empty to generate an ephemeral name.
+    required: false
+    default: ""
+  workspace-name-prefix:
+    description: Prefix used when workspace-name is empty.
+    required: false
+    default: fabric-ws
+  workspace-name-suffix:
+    description: Suffix used when workspace-name is empty. Leave empty for a random suffix.
+    required: false
+    default: ""
+  workspace-description:
+    description: Workspace description.
+    required: false
+    default: ""
+  enable-workspace-identity:
+    description: Create a system-assigned workspace identity.
+    required: false
+    default: "true"
+  skip-capacity-state-validation:
+    description: Skip validation of the Fabric capacity state.
+    required: false
+    default: "false"
+  tenant-id:
+    description: Entra tenant ID used to authenticate against Fabric.
+    required: true
+  client-id:
+    description: Entra application (client) ID used to authenticate against Fabric.
+    required: true
+  azure-subscription-id:
+    description: Azure subscription ID of the Terraform state storage account. Only needed with an azurerm backend.
+    required: false
+    default: ""
+  backend-config:
+    description: |
+      Newline separated `key=value` settings for the azurerm remote state backend, for example
+      `resource_group_name=rg`. When empty, Terraform uses local state.
+    required: false
+    default: ""
+  terraform-version:
+    description: Terraform version to use.
+    required: false
+    default: 1.13.3
+  working-directory:
+    description: Directory containing the Terraform configuration.
+    required: false
+    default: terraform/fabric-workspace
+
+outputs:
+  workspace-id:
+    description: ID of the Fabric workspace.
+    value: ${{ steps.outputs.outputs.workspace-id }}
+  workspace-name:
+    description: Display name of the Fabric workspace.
+    value: ${{ steps.outputs.outputs.workspace-name }}
+  workspace-identity-application-id:
+    description: Application ID of the workspace identity.
+    value: ${{ steps.outputs.outputs.workspace-identity-application-id }}
+  workspace-identity-service-principal-id:
+    description: Service principal ID of the workspace identity.
+    value: ${{ steps.outputs.outputs.workspace-identity-service-principal-id }}
+  onelake-dfs-endpoint:
+    description: OneLake DFS endpoint of the workspace.
+    value: ${{ steps.outputs.outputs.onelake-dfs-endpoint }}
+
+runs:
+  using: composite
+  steps:
+    - name: Validate action input
+      shell: bash
+      env:
+        TF_ACTION: ${{ inputs.action }}
+      run: |
+        set -euo pipefail
+
+        case "${TF_ACTION}" in
+          plan|apply|destroy) ;;
+          *)
+            echo "::error::action must be one of plan, apply or destroy (got '${TF_ACTION}')."
+            exit 1
+            ;;
+        esac
+
+    - name: Set up Terraform
+      uses: hashicorp/setup-terraform@v3.1.2
+      with:
+        terraform_version: ${{ inputs.terraform-version }}
+        terraform_wrapper: false
+
+    - name: Write Terraform variables
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      env:
+        TF_WORKSPACE_NAME: ${{ inputs.workspace-name }}
+        TF_WORKSPACE_NAME_PREFIX: ${{ inputs.workspace-name-prefix }}
+        TF_WORKSPACE_NAME_SUFFIX: ${{ inputs.workspace-name-suffix }}
+        TF_WORKSPACE_DESCRIPTION: ${{ inputs.workspace-description }}
+        TF_CAPACITY_ID: ${{ inputs.capacity-id }}
+        TF_ENABLE_WORKSPACE_IDENTITY: ${{ inputs.enable-workspace-identity }}
+        TF_SKIP_CAPACITY_STATE_VALIDATION: ${{ inputs.skip-capacity-state-validation }}
+      run: |
+        set -euo pipefail
+
+        if [[ -z "${TF_CAPACITY_ID}" ]]; then
+          echo "::error::capacity-id is required."
+          exit 1
+        fi
+
+        python3 - <<'PY'
+        import json
+        import os
+
+        def flag(name):
+            value = os.environ.get(name, "").strip().lower()
+            if value not in {"true", "false"}:
+                raise SystemExit(f"::error::{name} must be 'true' or 'false' (got '{value}').")
+            return value == "true"
+
+        variables = {
+            "capacity_id": os.environ["TF_CAPACITY_ID"].strip(),
+            "workspace_name": os.environ.get("TF_WORKSPACE_NAME", "").strip(),
+            "workspace_name_prefix": os.environ.get("TF_WORKSPACE_NAME_PREFIX", "").strip() or "fabric-ws",
+            "workspace_name_suffix": os.environ.get("TF_WORKSPACE_NAME_SUFFIX", "").strip(),
+            "workspace_description": os.environ.get("TF_WORKSPACE_DESCRIPTION", ""),
+            "enable_workspace_identity": flag("TF_ENABLE_WORKSPACE_IDENTITY"),
+            "skip_capacity_state_validation": flag("TF_SKIP_CAPACITY_STATE_VALIDATION"),
+        }
+
+        with open("github.auto.tfvars.json", "w", encoding="utf-8") as handle:
+            json.dump(variables, handle, indent=2)
+        PY
+
+    - name: Configure remote state backend
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      env:
+        TF_BACKEND_CONFIG: ${{ inputs.backend-config }}
+      run: |
+        set -euo pipefail
+
+        backend_args=()
+
+        while IFS= read -r line; do
+          line="${line#"${line%%[![:space:]]*}"}"
+          line="${line%"${line##*[![:space:]]}"}"
+          [[ -z "${line}" ]] && continue
+          if [[ "${line}" != *=* || "${line}" == *[[:space:]]* ]]; then
+            echo "::error::backend-config entries must be single-line 'key=value' pairs without spaces."
+            exit 1
+          fi
+          backend_args+=("-backend-config=${line}")
+        done <<< "${TF_BACKEND_CONFIG}"
+
+        if [[ ${#backend_args[@]} -eq 0 ]]; then
+          echo "::warning::No backend-config supplied; Terraform will use local state that is discarded after this job. Configure an azurerm backend to manage updates and destroys."
+          echo "TF_INIT_ARGS=" >> "${GITHUB_ENV}"
+          exit 0
+        fi
+
+        cp backend-azurerm.tf.example backend-azurerm.tf
+        printf 'TF_INIT_ARGS=%s\n' "${backend_args[*]}" >> "${GITHUB_ENV}"
+
+    - name: Terraform init
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      env:
+        ARM_USE_OIDC: "true"
+        ARM_USE_AZUREAD: "true"
+        ARM_CLIENT_ID: ${{ inputs.client-id }}
+        ARM_TENANT_ID: ${{ inputs.tenant-id }}
+        ARM_SUBSCRIPTION_ID: ${{ inputs.azure-subscription-id }}
+      run: |
+        set -euo pipefail
+        # shellcheck disable=SC2086
+        terraform init -input=false ${TF_INIT_ARGS:-}
+
+    - name: Terraform format and validate
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      run: |
+        set -euo pipefail
+        terraform fmt -check -recursive
+        terraform validate
+
+    - name: Terraform ${{ inputs.action }}
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      env:
+        TF_ACTION: ${{ inputs.action }}
+        FABRIC_USE_OIDC: "true"
+        FABRIC_CLIENT_ID: ${{ inputs.client-id }}
+        FABRIC_TENANT_ID: ${{ inputs.tenant-id }}
+        ARM_USE_OIDC: "true"
+        ARM_USE_AZUREAD: "true"
+        ARM_CLIENT_ID: ${{ inputs.client-id }}
+        ARM_TENANT_ID: ${{ inputs.tenant-id }}
+        ARM_SUBSCRIPTION_ID: ${{ inputs.azure-subscription-id }}
+      run: |
+        set -euo pipefail
+
+        case "${TF_ACTION}" in
+          plan)
+            terraform plan -input=false -lock-timeout=5m
+            ;;
+          apply)
+            terraform apply -input=false -auto-approve -lock-timeout=5m
+            ;;
+          destroy)
+            terraform destroy -input=false -auto-approve -lock-timeout=5m
+            ;;
+        esac
+
+    - name: Export Terraform outputs
+      id: outputs
+      if: ${{ inputs.action == 'apply' }}
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      env:
+        FABRIC_USE_OIDC: "true"
+        FABRIC_CLIENT_ID: ${{ inputs.client-id }}
+        FABRIC_TENANT_ID: ${{ inputs.tenant-id }}
+        ARM_USE_OIDC: "true"
+        ARM_USE_AZUREAD: "true"
+        ARM_CLIENT_ID: ${{ inputs.client-id }}
+        ARM_TENANT_ID: ${{ inputs.tenant-id }}
+        ARM_SUBSCRIPTION_ID: ${{ inputs.azure-subscription-id }}
+      run: |
+        set -euo pipefail
+
+        terraform output -json > terraform-outputs.json
+
+        python3 - <<'PY'
+        import json
+        import os
+        import uuid
+
+        mapping = {
+            "workspace-id": "workspace_id",
+            "workspace-name": "workspace_name",
+            "workspace-identity-application-id": "workspace_identity_application_id",
+            "workspace-identity-service-principal-id": "workspace_identity_service_principal_id",
+            "onelake-dfs-endpoint": "onelake_dfs_endpoint",
+        }
+
+        with open("terraform-outputs.json", encoding="utf-8") as handle:
+            outputs = json.load(handle)
+
+        summary = ["| Output | Value |", "| --- | --- |"]
+        with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as handle:
+            for output_name, terraform_name in mapping.items():
+                value = outputs.get(terraform_name, {}).get("value")
+                value = "" if value is None else str(value)
+                # Multi-line safe format so output values cannot inject workflow commands.
+                delimiter = f"ghadelimiter_{uuid.uuid4()}"
+                handle.write(f"{output_name}<<{delimiter}\n{value}\n{delimiter}\n")
+                summary.append(f"| `{terraform_name}` | `{value}` |")
+
+        with open(os.environ["GITHUB_STEP_SUMMARY"], "a", encoding="utf-8") as handle:
+            handle.write("\n".join(summary) + "\n")
+        PY
+
+    - name: Remove generated Terraform files
+      if: always()
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      run: |
+        set -euo pipefail
+        rm -f github.auto.tfvars.json terraform-outputs.json backend-azurerm.tf

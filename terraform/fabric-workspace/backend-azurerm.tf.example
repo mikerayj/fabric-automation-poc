@@ -1,0 +1,14 @@
+# Remote state is required whenever a workspace must be updated or destroyed by
+# a later run (for example from GitHub Actions). Rename this file to
+# `backend-azurerm.tf` and pass the settings with `-backend-config`:
+#
+#   terraform init \
+#     -backend-config="resource_group_name=<rg>" \
+#     -backend-config="storage_account_name=<sa>" \
+#     -backend-config="container_name=tfstate" \
+#     -backend-config="key=fabric-workspace/<name>.tfstate" \
+#     -backend-config="use_azuread_auth=true"
+
+terraform {
+  backend "azurerm" {}
+}
