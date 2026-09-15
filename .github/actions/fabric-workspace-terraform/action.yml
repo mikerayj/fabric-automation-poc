@@ -61,19 +61,19 @@ inputs:
 outputs:
   workspace-id:
     description: ID of the Fabric workspace.
-    value: ${{ steps.outputs.outputs.workspace-id }}
+    value: ${{ steps.terraform_outputs.outputs.workspace-id }}
   workspace-name:
     description: Display name of the Fabric workspace.
-    value: ${{ steps.outputs.outputs.workspace-name }}
+    value: ${{ steps.terraform_outputs.outputs.workspace-name }}
   workspace-identity-application-id:
     description: Application ID of the workspace identity.
-    value: ${{ steps.outputs.outputs.workspace-identity-application-id }}
+    value: ${{ steps.terraform_outputs.outputs.workspace-identity-application-id }}
   workspace-identity-service-principal-id:
     description: Service principal ID of the workspace identity.
-    value: ${{ steps.outputs.outputs.workspace-identity-service-principal-id }}
+    value: ${{ steps.terraform_outputs.outputs.workspace-identity-service-principal-id }}
   onelake-dfs-endpoint:
     description: OneLake DFS endpoint of the workspace.
-    value: ${{ steps.outputs.outputs.onelake-dfs-endpoint }}
+    value: ${{ steps.terraform_outputs.outputs.onelake-dfs-endpoint }}
 
 runs:
   using: composite
@@ -158,6 +158,7 @@ runs:
       shell: bash
       working-directory: ${{ inputs.working-directory }}
       env:
+        TF_ACTION: ${{ inputs.action }}
         TF_BACKEND_CONFIG: ${{ inputs.backend-config }}
         TF_AZURE_SUBSCRIPTION_ID: ${{ inputs.azure-subscription-id }}
       run: |
@@ -177,7 +178,12 @@ runs:
         done <<< "${TF_BACKEND_CONFIG}"
 
         if [[ ${#backend_args[@]} -eq 0 ]]; then
-          echo "::warning::No backend-config supplied; Terraform will use local state that is discarded after this job. Configure an azurerm backend to manage updates and destroys."
+          if [[ "${TF_ACTION}" == "destroy" ]]; then
+            echo "::error::destroy needs the remote state created by the matching apply. Supply backend-config, or run 'terraform destroy' locally against the state file."
+            exit 1
+          fi
+
+          echo "::warning::No backend-config supplied; Terraform will use local state that is discarded after this job. Configure an azurerm backend so this workspace can be updated or destroyed later."
           echo "TF_INIT_ARGS=" >> "${GITHUB_ENV}"
           exit 0
         fi
@@ -246,7 +252,7 @@ runs:
         esac
 
     - name: Export Terraform outputs
-      id: outputs
+      id: terraform_outputs
       if: ${{ inputs.action == 'apply' }}
       shell: bash
       working-directory: ${{ inputs.working-directory }}
